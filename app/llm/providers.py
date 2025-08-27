@@ -1,0 +1,1 @@
+# OpenAI or Claude provider integration placeholder
