@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Functions</title>
+  <style>
+    body {
+      font-family: 'Google Sans', Arial, sans-serif;
+      margin: 0;
+      padding: 16px;
+      background-color: #f8f9fa;
+      color: #202124;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #e8eaed;
+    }
+
+    .logo {
+      font-size: 20px;
+      font-weight: 500;
+      color: #1a73e8;
+      margin-bottom: 4px;
+    }
+
+    .subtitle {
+      font-size: 12px;
+      color: #5f6368;
+    }
+
+    .credit-card {
+      background: white;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      border: 1px solid #e8eaed;
+    }
+
+    .credit-balance {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .credit-number {
+      font-size: 24px;
+      font-weight: 600;
+      color: #1a73e8;
+    }
+
+    .credit-label {
+      font-size: 12px;
+      color: #5f6368;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 6px;
+      background-color: #e8eaed;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #34a853 0%, #fbbc04 70%, #ea4335 100%);
+      border-radius: 3px;
+      transition: width 0.3s ease;
+    }
+
+    .usage-stats {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: #5f6368;
+    }
+
+    .subscription-tier {
+      background: #e8f0fe;
+      color: #1a73e8;
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      display: inline-block;
+      margin-bottom: 12px;
+    }
+
+    .tier-free { background: #f3f4f6; color: #6b7280; }
+    .tier-starter { background: #dbeafe; color: #1d4ed8; }
+    .tier-professional { background: #dcfce7; color: #16a34a; }
+    .tier-enterprise { background: #fef3c7; color: #d97706; }
+
+    .button {
+      width: 100%;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      margin-bottom: 8px;
+      text-decoration: none;
+      display: inline-block;
+      text-align: center;
+      box-sizing: border-box;
+    }
+
+    .button-primary {
+      background: #1a73e8;
+      color: white;
+    }
+
+    .button-primary:hover {
+      background: #1557b0;
+      box-shadow: 0 2px 4px rgba(26, 115, 232, 0.3);
+    }
+
+    .button-secondary {
+      background: white;
+      color: #1a73e8;
+      border: 1px solid #dadce0;
+    }
+
+    .button-secondary:hover {
+      background: #f8f9fa;
+      border-color: #1a73e8;
+    }
+
+    .button:disabled {
+      background: #f1f3f4;
+      color: #9aa0a6;
+      cursor: not-allowed;
+    }
+
+    .function-usage {
+      background: white;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      border: 1px solid #e8eaed;
+    }
+
+    .function-title {
+      font-weight: 500;
+      margin-bottom: 12px;
+      color: #202124;
+    }
+
+    .function-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid #f1f3f4;
+    }
+
+    .function-item:last-child {
+      border-bottom: none;
+    }
+
+    .function-name {
+      font-size: 13px;
+      color: #5f6368;
+    }
+
+    .function-count {
+      font-size: 13px;
+      font-weight: 500;
+      color: #202124;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 20px;
+      color: #5f6368;
+    }
+
+    .error {
+      background: #fce8e6;
+      color: #d93025;
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+
+    .success {
+      background: #e6f4ea;
+      color: #137333;
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+
+    .refresh-button {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 4px;
+      color: #5f6368;
+    }
+
+    .refresh-button:hover {
+      background: #f1f3f4;
+    }
+
+    .team-info {
+      background: #fff3cd;
+      border: 1px solid #ffeaa7;
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 16px;
+      font-size: 13px;
+    }
+
+    .team-name {
+      font-weight: 500;
+      color: #856404;
+    }
+
+    .team-role {
+      color: #6c757d;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .spinning {
+      animation: spin 1s linear infinite;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">AI Functions</div>
+    <div class="subtitle">Powered by GPT</div>
+    <button class="refresh-button" onclick="refreshData()" title="Refresh">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+      </svg>
+    </button>
+  </div>
+
+  <div id="content">
+    <div class="loading">Loading...</div>
+  </div>
+
+  <script>
+    let userData = null;
+    let refreshInterval = null;
+
+    // Initialize the sidebar
+    document.addEventListener('DOMContentLoaded', function() {
+      loadUserData();
+      startAutoRefresh();
+    });
+
+    function loadUserData() {
+      google.script.run
+        .withSuccessHandler(onDataLoaded)
+        .withFailureHandler(onError)
+        .getSidebarData();
+    }
+
+    function onDataLoaded(data) {
+      userData = data;
+      renderContent();
+    }
+
+    function onError(error) {
+      console.error('Error loading data:', error);
+      document.getElementById('content').innerHTML = `
+        <div class="error">
+          Failed to load data. Please try refreshing.
+        </div>
+        <button class="button button-secondary" onclick="loadUserData()">
+          Retry
+        </button>
+      `;
+    }
+
+    function renderContent() {
+      if (!userData) {
+        document.getElementById('content').innerHTML = '<div class="loading">Loading...</div>';
+        return;
+      }
+
+      const credits = userData.credits;
+      const user = userData.user;
+      const usagePercentage = credits.total_credits > 0 
+        ? (credits.used_credits / credits.total_credits) * 100 
+        : 0;
+
+      let tierClass = 'tier-free';
+      switch(credits.subscription_tier) {
+        case 'starter': tierClass = 'tier-starter'; break;
+        case 'professional': tierClass = 'tier-professional'; break;
+        case 'enterprise': tierClass = 'tier-enterprise'; break;
+      }
+
+      const html = `
+        ${userData.team ? `
+          <div class="team-info">
+            <div class="team-name">${userData.team.name}</div>
+            <div class="team-role">${userData.team.role}</div>
+          </div>
+        ` : ''}
+
+        <div class="credit-card">
+          <div class="subscription-tier ${tierClass}">
+            ${credits.subscription_tier}
+          </div>
+          
+          <div class="credit-balance">
+            <div>
+              <div class="credit-number">${credits.available_credits.toLocaleString()}</div>
+              <div class="credit-label">Available Credits</div>
+            </div>
+          </div>
+
+          <div class="progress-bar">
+            <div class="progress-fill" style="width: ${Math.min(usagePercentage, 100)}%"></div>
+          </div>
+
+          <div class="usage-stats">
+            <span>Used: ${credits.used_credits.toLocaleString()}</span>
+            <span>Total: ${credits.total_credits.toLocaleString()}</span>
+          </div>
+        </div>
+
+        <div class="function-usage">
+          <div class="function-title">This Month's Usage</div>
+          <div class="function-item">
+            <span class="function-name">Data Cleaning</span>
+            <span class="function-count">${(userData.usage?.clean || 0).toLocaleString()}</span>
+          </div>
+          <div class="function-item">
+            <span class="function-name">SEO Utilities</span>
+            <span class="function-count">${(userData.usage?.seo || 0).toLocaleString()}</span>
+          </div>
+          <div class="function-item">
+            <span class="function-name">Summarization</span>
+            <span class="function-count">${(userData.usage?.summarize || 0).toLocaleString()}</span>
+          </div>
+          <div class="function-item">
+            <span class="function-name">Total</span>
+            <span class="function-count">${credits.usage_this_month.toLocaleString()}</span>
+          </div>
+        </div>
+
+        <button class="button button-primary" onclick="purchaseCredits()">
+          Buy More Credits
+        </button>
+
+        <button class="button button-secondary" onclick="viewUsageHistory()">
+          View Usage History
+        </button>
+
+        ${credits.subscription_tier === 'free' ? `
+          <button class="button button-secondary" onclick="upgradePlan()">
+            Upgrade Plan
+          </button>
+        ` : ''}
+
+        <button class="button button-secondary" onclick="showHelp()">
+          Help & Documentation
+        </button>
+      `;
+
+      document.getElementById('content').innerHTML = html;
+    }
+
+    function refreshData() {
+      const refreshButton = document.querySelector('.refresh-button svg');
+      refreshButton.classList.add('spinning');
+      
+      google.script.run
+        .withSuccessHandler(function(data) {
+          refreshButton.classList.remove('spinning');
+          onDataLoaded(data);
+        })
+        .withFailureHandler(function(error) {
+          refreshButton.classList.remove('spinning');
+          onError(error);
+        })
+        .getSidebarData();
+    }
+
+    function startAutoRefresh() {
+      // Refresh every 30 seconds
+      refreshInterval = setInterval(function() {
+        loadUserData();
+      }, 30000);
+    }
+
+    function purchaseCredits() {
+      // Open credit purchase flow
+      const url = 'https://your-api-domain.com/purchase?user=' + encodeURIComponent(userData.user.email);
+      window.open(url, '_blank');
+    }
+
+    function viewUsageHistory() {
+      const url = 'https://your-api-domain.com/usage?user=' + encodeURIComponent(userData.user.email);
+      window.open(url, '_blank');
+    }
+
+    function upgradePlan() {
+      const url = 'https://your-api-domain.com/upgrade?user=' + encodeURIComponent(userData.user.email);
+      window.open(url, '_blank');
+    }
+
+    function showHelp() {
+      google.script.run.showHelp();
+    }
+
+    // Handle visibility changes to pause/resume auto-refresh
+    document.addEventListener('visibilitychange', function() {
+      if (document.hidden) {
+        if (refreshInterval) {
+          clearInterval(refreshInterval);
+          refreshInterval = null;
+        }
+      } else {
+        if (!refreshInterval) {
+          startAutoRefresh();
+        }
+        loadUserData(); // Refresh immediately when becoming visible
+      }
+    });
+
+    // Cleanup on unload
+    window.addEventListener('beforeunload', function() {
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+      }
+    });
+  </script>
+</body>
+</html>
+
