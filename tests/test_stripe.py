@@ -1,1 +1,2 @@
-# Test Stripe endpoints
+def test_placeholder():
+    assert True

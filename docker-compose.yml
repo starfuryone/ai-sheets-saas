@@ -1,8 +1,21 @@
-version: '3.8'
+version: '3.9'
 services:
   api:
     build: .
     ports:
-      - '8000:8000'
-    env_file:
-      - .env.example
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=postgresql+psycopg2://postgres:postgres@db:5432/saas_sheets
+    depends_on:
+      - db
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: saas_sheets
+    ports:
+      - "5432:5432"
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"

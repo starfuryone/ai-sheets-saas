@@ -1,1 +1,2 @@
-# Test credit endpoints
+def test_placeholder():
+    assert True

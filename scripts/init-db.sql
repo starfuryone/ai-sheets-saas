@@ -1,1 +1,2 @@
--- SQL init
+-- Optional raw SQL init
+-- CREATE EXTENSION IF NOT EXISTS "uuid-ossp";

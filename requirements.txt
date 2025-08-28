@@ -1,11 +1,9 @@
 fastapi
 uvicorn
-sqlalchemy
-alembic
-psycopg2-binary
-redis
 pydantic
-stripe
-httpx
+sqlalchemy
+psycopg2-binary
+alembic
 python-dotenv
-pytest
+httpx
+stripe
