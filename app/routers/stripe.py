@@ -19,13 +19,13 @@ async def stripe_webhook(
     stripe_signature: str = Header(None, alias="stripe-signature")
 ):
     """Enhanced Stripe webhook handler with database-level idempotency."""
-
+    
     if not stripe_signature:
         raise HTTPException(status_code=400, detail="Missing Stripe signature")
-
+    
     # Get raw body for signature verification
     body = await request.body()
-
+    
     try:
         # Verify webhook signature
         event = stripe.Webhook.construct_event(
@@ -39,19 +39,19 @@ async def stripe_webhook(
     except stripe.error.SignatureVerificationError as e:
         logger.error(f"Invalid signature in webhook: {e}")
         raise HTTPException(status_code=400, detail="Invalid signature")
-
+    
     # Process event with idempotency protection
     processor = StripeEventProcessor(db)
     try:
         success, message = await processor.process_event(event)
-
+        
         if not success:
             # Return 400 for client errors, 500 for server errors
             status_code = 400 if "Invalid" in message else 500
             raise HTTPException(status_code=status_code, detail=message)
-
+        
         return {"status": "success", "message": message}
-
+        
     except Exception as e:
         logger.error(f"Unexpected error processing webhook {event.get('id')}: {e}")
         raise HTTPException(status_code=500, detail="Webhook processing failed")
@@ -65,10 +65,10 @@ async def get_event_status(
     event_log = db.query(StripeEventLog).filter(
         StripeEventLog.stripe_event_id == event_id
     ).first()
-
+    
     if not event_log:
         raise HTTPException(status_code=404, detail="Event not found")
-
+    
     return {
         "event_id": event_id,
         "event_type": event_log.event_type,
@@ -78,3 +78,6 @@ async def get_event_status(
         "processed_at": event_log.processed_at,
         "created_at": event_log.created_at
     }
+
+# Add the remaining credit pack and checkout endpoints from your existing router
+# (keeping the existing functionality intact)

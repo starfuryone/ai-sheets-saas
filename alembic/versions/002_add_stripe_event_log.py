@@ -19,17 +19,17 @@ def upgrade() -> None:
     # Create stripe event log table for idempotency
     op.create_table(
         'stripe_event_log',
-        sa.Column('id', UUID(as_uuid=True), primary_key=True, server_default=sa.text('gen_random_uuid()')),
+        sa.Column('id', UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
         sa.Column('stripe_event_id', sa.String(255), unique=True, nullable=False),
         sa.Column('event_type', sa.String(100), nullable=False),
         sa.Column('event_data', JSON),
-        sa.Column('processed', sa.Boolean, server_default=sa.text('false'), nullable=False),
-        sa.Column('processing_attempts', sa.Integer, server_default=sa.text('0')),
+        sa.Column('processed', sa.Boolean, default=False, nullable=False),
+        sa.Column('processing_attempts', sa.Integer, default=0),
         sa.Column('error_message', sa.Text),
         sa.Column('processed_at', sa.DateTime(timezone=True)),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now())
     )
-
+    
     # CRITICAL: Unique index for atomic insert protection
     op.create_index('ix_stripe_event_id', 'stripe_event_log', ['stripe_event_id'], unique=True)
     op.create_index('ix_stripe_event_processed', 'stripe_event_log', ['processed', 'created_at'])
@@ -42,6 +42,6 @@ def downgrade() -> None:
     op.drop_index('ix_stripe_event_type', 'stripe_event_log')
     op.drop_index('ix_stripe_event_processed', 'stripe_event_log')
     op.drop_index('ix_stripe_event_id', 'stripe_event_log')
-
+    
     # Drop table
     op.drop_table('stripe_event_log')
