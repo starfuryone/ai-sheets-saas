@@ -1,0 +1,201 @@
+.PHONY: install dev test migrate seed docker clean health setup config-check
+
+# Default target
+all: setup
+
+# Installation and setup
+install:
+	@echo "Installing Python dependencies..."
+	pip install -r requirements.txt
+	pip install -r requirements-dev.txt
+
+setup: install
+	@echo "Setting up development environment..."
+	@if [ ! -f .env ]; then \
+		echo "Creating .env from template..."; \
+		cp .env.example .env; \
+		echo "Please edit .env with your actual configuration values"; \
+	fi
+	@echo "Installing pre-commit hooks..."
+	pre-commit install
+	@echo "Making scripts executable..."
+	chmod +x scripts/check-secrets.sh
+	chmod +x scripts/start.py
+	@echo "Development environment ready!"
+	@echo "Next steps:"
+	@echo "1. Edit .env with your API keys and database URLs"
+	@echo "2. Run 'make migrate' to set up the database"
+	@echo "3. Run 'make test' to verify everything works"
+	@echo "4. Run 'make dev' to start the development server"
+
+# Configuration validation
+config-check:
+	@echo "Validating configuration..."
+	python -c "from app.config import settings; print('✅ Configuration validation passed')"
+
+config-test:
+	@echo "Testing configuration with various scenarios..."
+	pytest tests/test_config.py -v
+
+# Database operations
+migrate:
+	@echo "Running database migrations..."
+	alembic upgrade head
+
+migrate-create:
+	@echo "Creating new migration..."
+	@read -p "Migration description: " desc; \
+	alembic revision --autogenerate -m "$$desc"
+
+migrate-rollback:
+	@echo "Rolling back last migration..."
+	alembic downgrade -1
+
+seed:
+	@echo "Seeding database with initial data..."
+	python scripts/seed_data.py
+
+# Development server
+dev: config-check
+	@echo "Starting development server with configuration validation..."
+	python scripts/start.py
+
+dev-fast:
+	@echo "Starting development server (skip validation)..."
+	uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# Testing
+test: config-check
+	@echo "Running test suite..."
+	pytest tests/ -v --cov=app --cov-report=term-missing
+
+test-fast:
+	@echo "Running tests without coverage..."
+	pytest tests/ -v -x
+
+test-security:
+	@echo "Running security tests..."
+	pytest tests/test_stripe_idempotency.py tests/test_config.py -v
+
+# Code quality
+lint:
+	@echo "Running code quality checks..."
+	ruff check app tests
+	ruff format --check app tests
+	mypy app
+
+lint-fix:
+	@echo "Fixing code quality issues..."
+	ruff check app tests --fix
+	ruff format app tests
+
+security-scan:
+	@echo "Running security scans..."
+	@echo "1. Checking for secrets..."
+	./scripts/check-secrets.sh
+	@echo "2. Running bandit security analysis..."
+	bandit -r app/
+	@echo "3. Checking dependencies for vulnerabilities..."
+	safety check
+	@echo "4. Running detect-secrets..."
+	detect-secrets scan --baseline .secrets.baseline
+
+# Docker operations  
+docker-build:
+	@echo "Building Docker image..."
+	docker build -t saas-sheets:latest .
+
+docker-dev:
+	@echo "Starting development environment with Docker..."
+	docker-compose up --build
+
+docker-prod:
+	@echo "Starting production environment with Docker..."
+	docker-compose -f docker-compose.prod.yml up --build
+
+# Health and monitoring
+health:
+	@echo "Checking application health..."
+	python scripts/health_check.py
+
+status: config-check health
+	@echo "Application status summary:"
+	@echo "=========================="
+	@python -c "import sys; print(f'Python: {sys.version}')"
+	@python -c "try:\
+		from app.config import settings;\
+		print(f'Environment: {settings.environment}');\
+		print(f'Debug: {settings.debug}');\
+		print(f'Database configured: {bool(settings.database_url)}');\
+		print(f'Redis configured: {bool(settings.redis_url)}');\
+		print(f'LLM providers: {\"OpenAI\" if settings.openai_api_key else \"\"} {\"Anthropic\" if settings.anthropic_api_key else \"\"}'.strip());\
+	except Exception as e:\
+		print(f'Config error: {e}')"
+
+# Database backup and restore
+backup:
+	@echo "Creating database backup..."
+	python scripts/backup_db.py
+
+# Clean up temporary files
+clean:
+	@echo "Cleaning temporary files..."
+	find . -type f -name "*.pyc" -delete
+	find . -type d -name "__pycache__" -exec rm -rf {} +
+	find . -type d -name ".pytest_cache" -exec rm -rf {} +
+	find . -type f -name ".coverage" -delete
+	find . -type d -name "htmlcov" -exec rm -rf {} +
+	rm -rf .mypy_cache
+	rm -f test.db
+	@echo "Cleanup complete!"
+
+# Production deployment helpers
+deploy-check: config-check security-scan test
+	@echo "Pre-deployment validation complete"
+	@echo "Ready for production deployment"
+
+# CI/CD helpers  
+ci-test: install test lint security-scan
+	@echo "CI pipeline completed successfully"
+
+# Show help
+help:
+	@echo "SaaS Sheets AI - Development Commands"
+	@echo "===================================="
+	@echo ""
+	@echo "Setup & Installation:"
+	@echo "  setup          - Complete development environment setup"
+	@echo "  install        - Install Python dependencies"
+	@echo "  config-check   - Validate configuration"
+	@echo ""
+	@echo "Database:"
+	@echo "  migrate        - Run database migrations"
+	@echo "  migrate-create - Create new migration"
+	@echo "  seed           - Seed database with initial data"
+	@echo "  backup         - Create database backup"
+	@echo ""
+	@echo "Development:"
+	@echo "  dev            - Start development server with validation"
+	@echo "  dev-fast       - Start development server (skip validation)"
+	@echo ""
+	@echo "Testing:"
+	@echo "  test           - Run full test suite with coverage"
+	@echo "  test-fast      - Run tests without coverage"
+	@echo "  test-security  - Run security-focused tests"
+	@echo ""
+	@echo "Code Quality:"
+	@echo "  lint           - Run linting and type checking"
+	@echo "  lint-fix       - Fix linting issues automatically"
+	@echo "  security-scan  - Run comprehensive security scans"
+	@echo ""
+	@echo "Docker:"
+	@echo "  docker-build   - Build Docker image"
+	@echo "  docker-dev     - Run with Docker Compose (development)"
+	@echo "  docker-prod    - Run with Docker Compose (production)"
+	@echo ""
+	@echo "Utilities:"
+	@echo "  health         - Check application health"
+	@echo "  status         - Show application status"
+	@echo "  clean          - Clean temporary files"
+	@echo "  deploy-check   - Pre-deployment validation"
+	@echo ""

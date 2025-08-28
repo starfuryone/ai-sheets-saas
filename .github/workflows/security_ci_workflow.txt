@@ -1,0 +1,327 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run security scans weekly on Sundays at 2 AM UTC
+    - cron: '0 2 * * 0'
+
+jobs:
+  secret-scan:
+    name: Secret Detection
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        # Fetch full history for better secret detection
+        fetch-depth: 0
+    
+    - name: Run Gitleaks Secret Scan
+      uses: gitleaks/gitleaks-action@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+    
+    - name: Custom Secret Pattern Scan
+      run: |
+        echo "🔍 Scanning for common secret patterns..."
+        
+        # Define patterns that should never appear in code
+        PATTERNS=(
+          # API Keys
+          "sk-[a-zA-Z0-9]{20,}"
+          "sk_test_[a-zA-Z0-9]{24,}"
+          "sk_live_[a-zA-Z0-9]{24,}"
+          "sk-ant-[a-zA-Z0-9-]{95,}"
+          "whsec_[a-zA-Z0-9]{32,}"
+          "pk_test_[a-zA-Z0-9]{24,}"
+          "pk_live_[a-zA-Z0-9]{24,}"
+          # Database URLs with credentials
+          "postgresql://[^:]+:[^@]+@"
+          "mysql://[^:]+:[^@]+@"
+          "mongodb://[^:]+:[^@]+@"
+          # JWT secrets (common weak patterns)
+          "jwt[_-]?secret[\"':][\s]*[\"'][a-zA-Z0-9]{8,}"
+          # AWS Keys
+          "AKIA[0-9A-Z]{16}"
+          "aws_access_key_id[\s]*=[\s]*[\"']?[A-Z0-9]{20}"
+          "aws_secret_access_key[\s]*=[\s]*[\"']?[A-Za-z0-9/+=]{40}"
+          # Google API Keys
+          "AIza[0-9A-Za-z\\-_]{35}"
+          # Generic API patterns
+          "api[_-]?key[\s]*[=:]\s*[\"'][a-zA-Z0-9]{16,}[\"']"
+          "secret[_-]?key[\s]*[=:]\s*[\"'][a-zA-Z0-9]{16,}[\"']"
+          # Password patterns in code
+          "password[\s]*[=:]\s*[\"'][^\"']{8,}[\"']"
+        )
+        
+        # Exclude patterns (reduce false positives)
+        EXCLUDE_PATTERNS=(
+          "example"
+          "test"
+          "fake"
+          "dummy"
+          "placeholder"
+          "your-"
+          "change"
+          "TODO"
+          "FIXME"
+        )
+        
+        FOUND_SECRETS=false
+        
+        for pattern in "${PATTERNS[@]}"; do
+          echo "Checking pattern: $pattern"
+          
+          # Search for pattern, excluding common false positives
+          matches=$(grep -r -n -E "$pattern" \
+            --include="*.py" \
+            --include="*.js" \
+            --include="*.ts" \
+            --include="*.yaml" \
+            --include="*.yml" \
+            --include="*.json" \
+            --include="*.env*" \
+            --exclude-dir=".git" \
+            --exclude-dir="node_modules" \
+            --exclude-dir=".venv" \
+            --exclude-dir="__pycache__" \
+            --exclude="*.example" \
+            . || true)
+          
+          if [ -n "$matches" ]; then
+            # Filter out exclude patterns
+            filtered_matches=""
+            while IFS= read -r line; do
+              skip_line=false
+              for exclude in "${EXCLUDE_PATTERNS[@]}"; do
+                if echo "$line" | grep -i "$exclude" > /dev/null; then
+                  skip_line=true
+                  break
+                fi
+              done
+              
+              if [ "$skip_line" = false ]; then
+                filtered_matches="$filtered_matches$line\n"
+              fi
+            done <<< "$matches"
+            
+            if [ -n "$filtered_matches" ]; then
+              echo "⚠️ Potential secrets found:"
+              echo -e "$filtered_matches"
+              FOUND_SECRETS=true
+            fi
+          fi
+        done
+        
+        if [ "$FOUND_SECRETS" = true ]; then
+          echo ""
+          echo "❌ SECURITY SCAN FAILED"
+          echo "Potential secrets or credentials detected in code."
+          echo "Please review the findings above and:"
+          echo "1. Remove any real credentials from code"
+          echo "2. Use environment variables instead"
+          echo "3. Add legitimate test patterns to .secrets.baseline"
+          exit 1
+        else
+          echo "✅ No secrets detected in code"
+        fi
+  
+  dependency-scan:
+    name: Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install safety bandit semgrep
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+    
+    - name: Run Safety (dependency vulnerabilities)
+      run: |
+        echo "🔍 Scanning Python dependencies for known vulnerabilities..."
+        safety check --json --output safety-report.json || true
+        
+        if [ -f safety-report.json ] && [ -s safety-report.json ]; then
+          echo "⚠️ Dependency vulnerabilities found:"
+          cat safety-report.json | python -m json.tool
+          # Don't fail CI for now, just report
+          echo "::warning::Dependency vulnerabilities detected. Review safety-report.json"
+        else
+          echo "✅ No known dependency vulnerabilities found"
+        fi
+    
+    - name: Run Bandit (Python security analysis)
+      run: |
+        echo "🔍 Running Bandit security analysis..."
+        bandit -r app/ -f json -o bandit-report.json || true
+        
+        if [ -f bandit-report.json ]; then
+          # Check if there are any high or medium severity issues
+          high_issues=$(cat bandit-report.json | python -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    high_count = sum(1 for result in data.get('results', []) if result.get('issue_severity') == 'HIGH')
+    print(high_count)
+except:
+    print('0')
+" 2>/dev/null || echo "0")
+          
+          if [ "$high_issues" -gt 0 ]; then
+            echo "❌ High severity security issues found:"
+            cat bandit-report.json | python -m json.tool
+            echo "::error::High severity security issues detected"
+            exit 1
+          else
+            echo "✅ No high severity security issues found"
+            # Still show the report for visibility
+            cat bandit-report.json | python -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    if data.get('results'):
+        print('ℹ️ Bandit found some lower severity issues:')
+        for result in data['results']:
+            print(f'  {result[\"issue_severity\"]}: {result[\"issue_text\"]} in {result[\"filename\"]}:{result[\"line_number\"]}')
+except:
+    pass
+" 2>/dev/null || true
+          fi
+        fi
+    
+    - name: Run Semgrep (SAST)
+      run: |
+        echo "🔍 Running Semgrep static analysis..."
+        semgrep --config=auto --json --output=semgrep-report.json app/ || true
+        
+        if [ -f semgrep-report.json ] && [ -s semgrep-report.json ]; then
+          # Check for high severity findings
+          high_findings=$(cat semgrep-report.json | python -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    high_count = sum(1 for result in data.get('results', []) 
+                    if result.get('extra', {}).get('severity') in ['ERROR', 'WARNING'])
+    print(high_count)
+except:
+    print('0')
+" 2>/dev/null || echo "0")
+          
+          if [ "$high_findings" -gt 0 ]; then
+            echo "⚠️ Semgrep security findings:"
+            cat semgrep-report.json | python -m json.tool
+            echo "::warning::Security findings detected by Semgrep"
+          else
+            echo "✅ No significant security findings from Semgrep"
+          fi
+        fi
+    
+    - name: Upload Security Reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-reports
+        path: |
+          safety-report.json
+          bandit-report.json
+          semgrep-report.json
+          
+  infrastructure-scan:
+    name: Infrastructure Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Scan Docker files
+      run: |
+        echo "🔍 Scanning Dockerfile for security issues..."
+        
+        if [ -f Dockerfile ]; then
+          # Check for common Docker security issues
+          issues_found=false
+          
+          # Check for root user
+          if grep -q "^USER root" Dockerfile || ! grep -q "^USER " Dockerfile; then
+            echo "⚠️ Dockerfile may be running as root user"
+            issues_found=true
+          fi
+          
+          # Check for latest tag usage
+          if grep -q ":latest" Dockerfile; then
+            echo "⚠️ Dockerfile uses 'latest' tag - prefer specific versions"
+            issues_found=true
+          fi
+          
+          # Check for hardcoded secrets
+          if grep -E "(password|secret|key|token)[\s]*=" Dockerfile; then
+            echo "❌ Potential hardcoded secrets in Dockerfile"
+            issues_found=true
+            exit 1
+          fi
+          
+          if [ "$issues_found" = false ]; then
+            echo "✅ Dockerfile security check passed"
+          fi
+        else
+          echo "ℹ️ No Dockerfile found"
+        fi
+    
+    - name: Scan Kubernetes manifests
+      run: |
+        echo "🔍 Scanning Kubernetes manifests for security issues..."
+        
+        if [ -d k8s/ ]; then
+          issues_found=false
+          
+          for file in k8s/*.yaml k8s/*.yml; do
+            if [ -f "$file" ]; then
+              echo "Checking $file..."
+              
+              # Check for privileged containers
+              if grep -q "privileged: true" "$file"; then
+                echo "⚠️ Privileged container found in $file"
+                issues_found=true
+              fi
+              
+              # Check for missing resource limits
+              if grep -q "resources:" "$file"; then
+                if ! grep -A 10 "resources:" "$file" | grep -q "limits:"; then
+                  echo "⚠️ Missing resource limits in $file"
+                  issues_found=true
+                fi
+              else
+                echo "⚠️ No resource constraints defined in $file"
+                issues_found=true
+              fi
+              
+              # Check for hardcoded secrets
+              if grep -E "(password|secret|key|token):\s*[\"']?[a-zA-Z0-9]+" "$file"; then
+                echo "❌ Potential hardcoded secrets in $file"
+                exit 1
+              fi
+            fi
+          done
+          
+          if [ "$issues_found" = false ]; then
+            echo "✅ Kubernetes manifests security check passed"
+          fi
+        else
+          echo "ℹ️ No Kubernetes manifests found"
+        fi
