@@ -15,9 +15,9 @@ class TestConfigurationValidation:
         env_vars = {
             "DATABASE_URL": "postgresql://user:pass@localhost/db",
             "REDIS_URL": "redis://localhost:6379/0",
-            "JWT_SECRET": "a-very-secure-32-character-secret-key-here",
-            "STRIPE_SECRET_KEY": "sk_test_51234567890123456789012345",
-            "STRIPE_PUBLISHABLE_KEY": "pk_test_51234567890123456789012345",
+            "JWT_SECRET": "",
+            "STRIPE_SECRET_KEY": "",
+            "STRIPE_PUBLISHABLE_KEY": "",
             "STRIPE_WEBHOOK_SECRET": "whsec_1234567890123456789012345678901234",
             "OPENAI_API_KEY": "sk-1234567890123456789012345678901234567890123456789012"
         }
