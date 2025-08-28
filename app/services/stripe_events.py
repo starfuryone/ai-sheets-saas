@@ -1,8 +1,9 @@
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
 import logging
+import math
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
-from datetime import datetime
+from datetime import datetime, timedelta
 import uuid
 
 from app.models import StripeEventLog, User, CreditTransaction
@@ -11,7 +12,7 @@ from app.services.credits import add_credits
 logger = logging.getLogger(__name__)
 
 class StripeEventProcessor:
-    """Process Stripe webhook events with guaranteed idempotency."""
+    """Process Stripe webhook events with guaranteed idempotency and transactional safety."""
     
     def __init__(self, db: Session):
         self.db = db
@@ -30,6 +31,7 @@ class StripeEventProcessor:
             return False, "Invalid event data - missing id or type"
         
         # ATOMIC INSERT-FIRST APPROACH
+        event_log = None
         try:
             event_log = StripeEventLog(
                 stripe_event_id=event_id,
@@ -54,38 +56,65 @@ class StripeEventProcessor:
                 logger.info(f"Retrying failed event {event_id}")
                 event_log = existing_event
         
-        # Process the event with retry tracking
+        # Process the event within a transaction
         try:
-            event_log.processing_attempts += 1
-            
-            if event_type == "checkout.session.completed":
-                await self._handle_checkout_completed(event_data.get("data", {}).get("object"))
-            elif event_type == "payment_intent.succeeded":
-                await self._handle_payment_succeeded(event_data.get("data", {}).get("object"))
-            elif event_type == "payment_intent.payment_failed":
-                await self._handle_payment_failed(event_data.get("data", {}).get("object"))
-            elif event_type == "invoice.payment_succeeded":
-                await self._handle_subscription_payment(event_data.get("data", {}).get("object"))
-            else:
-                logger.info(f"Unhandled event type: {event_type}")
-                # Mark as processed even if unhandled to avoid retries
-            
-            # Mark as successfully processed
-            event_log.processed = True
-            event_log.processed_at = datetime.utcnow()
-            self.db.commit()
+            with self.db.begin():
+                # Update attempt count
+                event_log.processing_attempts = (event_log.processing_attempts or 0) + 1
+                
+                # Calculate next retry time with exponential backoff
+                if event_log.processing_attempts > 1:
+                    backoff_seconds = min(60 * (2 ** (event_log.processing_attempts - 2)), 3600)  # Max 1 hour
+                    next_retry = datetime.utcnow() + timedelta(seconds=backoff_seconds)
+                    if hasattr(event_log, 'next_retry_at'):
+                        event_log.next_retry_at = next_retry
+                    
+                    logger.info(f"Event {event_id} retry #{event_log.processing_attempts}, next retry at {next_retry}")
+                
+                # Process based on event type
+                if event_type == "checkout.session.completed":
+                    await self._handle_checkout_completed(event_data.get("data", {}).get("object"))
+                elif event_type == "payment_intent.succeeded":
+                    await self._handle_payment_succeeded(event_data.get("data", {}).get("object"))
+                elif event_type == "payment_intent.payment_failed":
+                    await self._handle_payment_failed(event_data.get("data", {}).get("object"))
+                elif event_type == "invoice.payment_succeeded":
+                    await self._handle_subscription_payment(event_data.get("data", {}).get("object"))
+                else:
+                    logger.info(f"Unhandled event type: {event_type}")
+                    # Mark as processed even if unhandled to avoid retries
+                
+                # Mark as successfully processed
+                event_log.processed = True
+                event_log.processed_at = datetime.utcnow()
+                event_log.error_message = None  # Clear any previous errors
+                
+                # Transaction commits automatically here
             
             logger.info(f"Successfully processed Stripe event {event_id} ({event_type})")
             return True, "Event processed successfully"
             
         except Exception as e:
-            logger.error(f"Failed to process event {event_id}: {e}")
-            event_log.error_message = str(e)
-            self.db.commit()
+            # Rollback any partial changes
+            self.db.rollback()
             
-            # Implement exponential backoff for retries
+            # Update error information
+            try:
+                event_log.error_message = str(e)
+                if event_log.processing_attempts >= 5:
+                    # Mark as dead letter after 5 attempts
+                    if hasattr(event_log, 'dead_letter'):
+                        event_log.dead_letter = True
+                    logger.error(f"Event {event_id} marked as dead letter after 5 attempts")
+                
+                self.db.commit()
+            except Exception as commit_error:
+                logger.error(f"Failed to update error info for event {event_id}: {commit_error}")
+                self.db.rollback()
+            
+            logger.error(f"Failed to process event {event_id}: {e}")
+            
             if event_log.processing_attempts >= 5:
-                logger.error(f"Event {event_id} failed after 5 attempts, marking as failed")
                 return False, f"Event processing failed after 5 attempts: {str(e)}"
             
             return False, f"Event processing failed: {str(e)}"
@@ -99,6 +128,11 @@ class StripeEventProcessor:
         
         if not user_id or not credits:
             raise ValueError(f"Missing user_id or credits in checkout session: {session_id}")
+        
+        # Verify user exists
+        user = self.db.query(User).filter(User.id == uuid.UUID(user_id)).first()
+        if not user:
+            raise ValueError(f"User {user_id} not found")
         
         # Add credits to user account with idempotency protection
         await add_credits(
@@ -115,7 +149,9 @@ class StripeEventProcessor:
     async def _handle_payment_succeeded(self, payment_intent_data: Dict[str, Any]):
         """Handle successful payment confirmation."""
         payment_intent_id = payment_intent_data.get("id")
-        logger.info(f"Payment succeeded: {payment_intent_id}")
+        amount = payment_intent_data.get("amount")
+        
+        logger.info(f"Payment succeeded: {payment_intent_id}, amount: {amount}")
         
         # Additional payment success logic here
         # e.g., send confirmation email, update analytics, etc.
@@ -123,16 +159,18 @@ class StripeEventProcessor:
     async def _handle_payment_failed(self, payment_intent_data: Dict[str, Any]):
         """Handle failed payment."""
         payment_intent_id = payment_intent_data.get("id")
-        logger.warning(f"Payment failed: {payment_intent_id}")
+        failure_reason = payment_intent_data.get("last_payment_error", {}).get("message", "Unknown")
+        
+        logger.warning(f"Payment failed: {payment_intent_id}, reason: {failure_reason}")
         
         # Handle failed payment logic
         # e.g., notify user, log for analysis, etc.
     
     async def _handle_subscription_payment(self, invoice_data: Dict[str, Any]):
         """Handle recurring subscription payments."""
-        invoice_id = invoice_data.get("id")
-        customer_id = invoice_data.get("customer")
-        amount_paid = invoice_data.get("amount_paid")
+        invoice_id = invoice_data.get("id") if invoice_data else None
+        customer_id = invoice_data.get("customer") if invoice_data else None
+        amount_paid = invoice_data.get("amount_paid") if invoice_data else None
         
         logger.info(f"Subscription payment received: {invoice_id} for customer {customer_id}")
         

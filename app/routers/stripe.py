@@ -1,5 +1,6 @@
 import stripe
 import logging
+import time
 from fastapi import APIRouter, Depends, HTTPException, Request, Header
 from sqlalchemy.orm import Session
 
@@ -27,11 +28,12 @@ async def stripe_webhook(
     body = await request.body()
     
     try:
-        # Verify webhook signature
+        # Verify webhook signature with timestamp tolerance
         event = stripe.Webhook.construct_event(
             body,
             stripe_signature,
-            settings.stripe_webhook_secret
+            settings.stripe_webhook_secret,
+            tolerance=300  # 5 minutes tolerance for timestamp
         )
     except ValueError as e:
         logger.error(f"Invalid payload in webhook: {e}")
@@ -39,6 +41,9 @@ async def stripe_webhook(
     except stripe.error.SignatureVerificationError as e:
         logger.error(f"Invalid signature in webhook: {e}")
         raise HTTPException(status_code=400, detail="Invalid signature")
+    
+    # Log webhook receipt
+    logger.info(f"Received Stripe webhook: {event.get('id')} ({event.get('type')})")
     
     # Process event with idempotency protection
     processor = StripeEventProcessor(db)
@@ -48,8 +53,10 @@ async def stripe_webhook(
         if not success:
             # Return 400 for client errors, 500 for server errors
             status_code = 400 if "Invalid" in message else 500
+            logger.error(f"Webhook processing failed: {message}")
             raise HTTPException(status_code=status_code, detail=message)
         
+        logger.info(f"Webhook processed successfully: {event.get('id')}")
         return {"status": "success", "message": message}
         
     except Exception as e:
@@ -76,8 +83,8 @@ async def get_event_status(
         "processing_attempts": event_log.processing_attempts,
         "error_message": event_log.error_message,
         "processed_at": event_log.processed_at,
-        "created_at": event_log.created_at
+        "created_at": event_log.created_at,
+        "next_retry_at": event_log.next_retry_at if hasattr(event_log, 'next_retry_at') else None
     }
 
-# Add the remaining credit pack and checkout endpoints from your existing router
-# (keeping the existing functionality intact)
+# Keep existing credit pack and checkout endpoints from your current router
