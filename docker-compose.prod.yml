@@ -1,0 +1,67 @@
+version: '3.9'
+
+services:
+  api:
+    build:
+      context: .
+    image: ai-sheets-saas:prod
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      - db
+      - redis
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/ops/readyz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - internal
+      - public
+
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-saas_sheets}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - internal
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    networks:
+      - internal
+    command: ["redis-server", "--appendonly", "yes"]
+
+networks:
+  internal:
+  public:
+
+volumes:
+  db_data:

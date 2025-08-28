@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: saas-sheets-api
+  labels:
+    app: saas-sheets-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: saas-sheets-api
+  template:
+    metadata:
+      labels:
+        app: saas-sheets-api
+    spec:
+      containers:
+      - name: api
+        image: ghcr.io/starfuryone/ai-sheets-saas:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: saas-sheets-secrets
+              key: database-url
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: saas-sheets-secrets
+              key: redis-url
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: saas-sheets-secrets
+              key: jwt-secret
+        - name: STRIPE_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: saas-sheets-secrets
+              key: stripe-secret-key
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: saas-sheets-secrets
+              key: openai-api-key
+        livenessProbe:
+          httpGet:
+            path: /livez
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"

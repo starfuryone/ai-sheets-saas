@@ -1,9 +1,1 @@
-fastapi
-uvicorn
-pydantic
-sqlalchemy
-psycopg2-binary
-alembic
-python-dotenv
-httpx
-stripe
+fastapi\nuvicorn\npydantic\nsqlalchemy\npsycopg2-binary\nalembic\npython-dotenv\nhttpx\nstripe\npytest\npytest-asyncio\npsutil\nredis\nopenai\nrequests\n

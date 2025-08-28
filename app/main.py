@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .db import Base, engine
 from .middleware import RequestIDMiddleware
-from .routers import ai, auth, credits, stripe
+from .routers import ai, auth, credits, stripe, observability
 
 Base.metadata.create_all(bind=engine)
 
@@ -26,3 +26,7 @@ app.include_router(stripe.router, prefix="/stripe", tags=["stripe"])
 @app.get("/healthz")
 def healthz():
     return {"status": "ok"}
+
+
+# Observability endpoints
+app.include_router(observability.router, prefix="/ops", tags=["observability"])
