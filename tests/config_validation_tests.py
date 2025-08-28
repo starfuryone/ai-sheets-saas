@@ -18,8 +18,8 @@ class TestConfigurationValidation:
             "JWT_SECRET": "",
             "STRIPE_SECRET_KEY": "",
             "STRIPE_PUBLISHABLE_KEY": "",
-            "STRIPE_WEBHOOK_SECRET": "whsec_1234567890123456789012345678901234",
-            "OPENAI_API_KEY": "sk-1234567890123456789012345678901234567890123456789012"
+            "STRIPE_WEBHOOK_SECRET": "",
+            "OPENAI_API_KEY": ""
         }
         
         for key, value in env_vars.items():
